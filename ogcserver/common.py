@@ -313,7 +313,11 @@ def copy_layer(obj):
 class WMSBaseServiceHandler(BaseServiceHandler):
 
     def GetMap(self, params):
-        m = self._buildMap(params)
+        try : 
+            m = self._buildMap(params)
+        except OGCError as e : 
+            print e
+            raise e 
         im = Image(params['width'], params['height'])
         render(m, im)
         format = PIL_TYPE_MAPPING[params['format']]
