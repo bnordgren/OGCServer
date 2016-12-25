@@ -71,7 +71,7 @@ class ParameterDefinition:
             raise ServerConfigurationError("Bad value for 'fallback' parameter, must be True or False.")
         self.fallback = fallback
 
-class BaseServiceHandler:
+class BaseServiceHandler (object):
 
     CONF_CONTACT_PERSON_PRIMARY = [
         ['contactperson', 'ContactPerson', str],
@@ -315,7 +315,8 @@ class WMSBaseServiceHandler(BaseServiceHandler):
     def GetMap(self, params):
         try : 
             m = self._buildMap(params)
-        except OGCError as e : 
+        except OGCException as e : 
+            print "Error Building the map." 
             print e
             raise e 
         im = Image(params['width'], params['height'])
@@ -489,6 +490,68 @@ class WMSBaseServiceHandler(BaseServiceHandler):
                             raise ServerConfigurationError('Layer "%s" refers to non-existent style "%s".' % (layername, stylename))
                 
                 m.layers.append(layer)
+        m.zoom_to_box(Box2d(params['bbox'][0], params['bbox'][1], params['bbox'][2], params['bbox'][3]))
+        return m
+
+class WMSXMLBaseServiceHandler (WMSBaseServiceHandler) : 
+    """A class to serve up a predefined XML map object rather than
+       the component layers"""
+
+    def _buildMap(self, params):
+        """This variant of buildmap just serves up the map as defined in the
+        xml file, plus some customizations from the params. Style and SRS are
+        ignored."""
+        if str(params['crs']) not in self.allowedepsgcodes:
+            raise OGCException('Unsupported CRS "%s" requested.' % str(params['crs']).upper(), 'InvalidCRS')
+        if params['bbox'][0] >= params['bbox'][2]:
+            raise OGCException("BBOX values don't make sense.  minx is greater than maxx.")
+        if params['bbox'][1] >= params['bbox'][3]:
+            raise OGCException("BBOX values don't make sense.  miny is greater than maxy.")
+
+        # There should be only one layer requested. 
+        if len(params['layers']) <> 1 : 
+            raise OGCException("When specifying a pre-rendered map, only one layer is allowed.")
+
+        # retrieve the map object and set width and height.
+        # leave srs alone.
+        m = self.mapfactory.layers[params['layers'][0]]
+        m.width = params['width']
+        m.height = params['height']
+
+        transparent = params.get('transparent', '').lower() == 'true'
+
+        # disable transparent on incompatible formats 
+        if transparent and params.get('format', '') == 'image/jpeg':
+            transparent = False
+
+        if transparent:
+            # transparent has highest priority
+            pass
+        elif params.has_key('bgcolor'):
+            # if not transparent use bgcolor in url            
+            m.background = params['bgcolor']
+        else:
+            # if not bgcolor in url use map background
+            if mapnik_version() >= 200000:
+                bgcolor = self.mapfactory.map_attributes.get('bgcolor', None)
+            else:
+                bgcolor = self.mapfactory.map_attributes.get('background-color', None)
+
+            if bgcolor:
+                m.background = bgcolor
+            else:
+                # if not map background defined use white color
+                m.background = Color(255, 255, 255, 255)
+
+
+        if params.has_key('buffer_size'):
+            if params['buffer_size']:
+                m.buffer_size = params['buffer_size']
+        else:
+            buffer_ = self.mapfactory.map_attributes.get('buffer_size')
+            if buffer_:
+                m.buffer_size = self.mapfactory.map_attributes['buffer_size']
+
         m.zoom_to_box(Box2d(params['bbox'][0], params['bbox'][1], params['bbox'][2], params['bbox'][3]))
         return m
 

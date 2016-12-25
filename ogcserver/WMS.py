@@ -3,7 +3,7 @@
 import re
 import sys
 import ConfigParser
-from mapnik import Style, Map, load_map, load_map_from_string, Box2d, Coord
+from mapnik import Style, Map, load_map, load_map_from_string, Box2d, Coord, Projection
 
 from ogcserver import common
 from ogcserver.wms111 import ServiceHandler as ServiceHandler111
@@ -184,7 +184,7 @@ This style will effectively be hidden by the 'all styles' default style for mult
         else:
             raise ServerConfigurationError('Layer "%s" was passed an invalid list of extra styles.  List must be a tuple of strings.' % layername)
         layerproj = common.Projection(layer.srs)
-        env = layer.envelope()
+        env = getattr(layer, 'maximum_extent', layer.envelope())
         llp = layerproj.inverse(Coord(env.minx, env.miny))
         urp = layerproj.inverse(Coord(env.maxx, env.maxy))
         if self.latlonbb is None:
@@ -223,3 +223,72 @@ This style will effectively be hidden by the 'all styles' default style for mult
             for style in list(layer.styles) + list(layer.wmsextrastyles):
                 if style not in self.styles.keys() + self.aggregatestyles.keys():
                     raise ServerConfigurationError('Layer "%s" refers to undefined style "%s".' % (layer.name, style))
+
+class MapWMSFactory (BaseWMSFactory) : 
+    """Loads a map object as something to be rendered and served."""
+    def loadXML(self, xmlfile=None, strict=False, xmlstring='', basepath=''):
+        """Loads and stores a complete map definition in leiu of a set of layers.
+        Stores an empty style of the same name, which is the only option for rendering.
+        The map will be rendered as prescribed in the XML."""
+        config = ConfigParser.SafeConfigParser()
+        map_wms_srs = None
+        if self.configpath:
+            config.readfp(open(self.configpath))
+
+            if config.has_option('map', 'wms_srs'):
+                map_wms_srs = config.get('map', 'wms_srs')
+
+        tmp_map = Map(0,0)
+        if xmlfile:
+            load_map(tmp_map, xmlfile, strict)
+        elif xmlstring:
+            load_map_from_string(tmp_map, xmlstring, strict, basepath)
+        else:
+            raise ServerConfigurationError("Mapnik configuration XML is not specified - 'xmlfile' and 'xmlstring' variables are empty.\
+Please set one of this variables to load mapnik map object.")
+        # parse map level attributes
+        if tmp_map.background:
+            self.map_attributes['bgcolor'] = tmp_map.background
+        if tmp_map.buffer_size:
+            self.map_attributes['buffer_size'] = tmp_map.buffer_size
+
+        if xmlfile is None : 
+            # Map objects have no name, so just call it default.
+            layer_name = 'default'
+        else : 
+            # The layer name is the basename of the xml file or the 
+            # whole file name
+            layer_name = xmlfile
+            fname_match = re.match('([A-Za-z0-9_\-\.]+).xml', xmlfile)
+            if fname_match is not None : 
+                layer_name = fname_match.group(1)
+            else : 
+                layer_name = xmlfile
+
+        style_name = layer_name
+        style_obj = Style()
+
+        # Make the map have attributes expected of layers
+        tmp_map.name = layer_name
+        map_p = common.Projection(tmp_map.srs)
+        if map_wms_srs is None : 
+            tmp_map.wms_srs = map_p.epsgstring()
+        else : 
+            tmp_map.wms_srs = map_wms_srs
+        tmp_map.queryable = False
+
+        # set map extent from config file.
+        geog_coords = config.get('map','wms_extent').split(',')
+        geog_box = Box2d(float(geog_coords[0]), float(geog_coords[1]), float(geog_coords[2]), float(geog_coords[3]))
+        proj_box = geog_box.forward(map_p)
+        tmp_map.zoom_to_box(proj_box)
+        tmp_map.maximum_extent = proj_box
+
+        self.register_style(style_name, style_obj)
+        self.register_layer(tmp_map, style_name) 
+
+    def finalize(self):
+        if len(self.layers) <> 1:
+            raise ServerConfigurationError('Layers improperly defined!')
+        if len(self.styles) <> 1:
+            raise ServerConfigurationError('Styles improperly defined!')

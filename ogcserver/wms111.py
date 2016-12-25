@@ -7,12 +7,12 @@ ElementTree.register_namespace('', "http://www.opengis.net/wms")
 ElementTree.register_namespace('xlink', "http://www.w3.org/1999/xlink")
 
 from ogcserver.common import ParameterDefinition, Response, Version, ListFactory, \
-                   ColorFactory, CRSFactory, WMSBaseServiceHandler, CRS, \
+                   ColorFactory, CRSFactory, WMSXMLBaseServiceHandler, CRS, \
                    BaseExceptionHandler, Projection, to_unicode
 from ogcserver.exceptions import OGCException, ServerConfigurationError
 
 
-class ServiceHandler(WMSBaseServiceHandler):
+class ServiceHandler(WMSXMLBaseServiceHandler):
 
     SERVICE_PARAMS = {
         'GetCapabilities': {
@@ -170,7 +170,7 @@ class ServiceHandler(WMSBaseServiceHandler):
                 layerproj = Projection(layer.srs)
                 layername = ElementTree.Element('Name')
                 layername.text = to_unicode(layer.name)
-                env = layer.envelope()
+                env = getattr(layer, "maximum_extent", layer.envelope())
                 llp = layerproj.inverse(Coord(env.minx, env.miny))
                 urp = layerproj.inverse(Coord(env.maxx, env.maxy))
                 latlonbb = ElementTree.Element('LatLonBoundingBox')
@@ -232,13 +232,13 @@ class ServiceHandler(WMSBaseServiceHandler):
 
     def GetMap(self, params):
         params['crs'] = params['srs']
-        return WMSBaseServiceHandler.GetMap(self, params)
+        return super(ServiceHandler, self).GetMap(params)
 
     def GetFeatureInfo(self, params):
         params['crs'] = params['srs']
         params['i'] = params['x']
         params['j'] = params['y']
-        return WMSBaseServiceHandler.GetFeatureInfo(self, params, 'query_map_point')
+        return super(ServiceHandler, self).GetFeatureInfo(params, 'query_map_point')
 
 class ExceptionHandler(BaseExceptionHandler):
 

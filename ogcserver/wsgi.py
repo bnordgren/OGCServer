@@ -13,7 +13,7 @@ from cStringIO import StringIO
 import mapnik
 
 from ogcserver.common import Version
-from ogcserver.WMS import BaseWMSFactory
+from ogcserver.WMS import BaseWMSFactory,MapWMSFactory
 from ogcserver.configparser import SafeConfigParser
 from ogcserver.wms111 import ExceptionHandler as ExceptionHandler111
 from ogcserver.wms130 import ExceptionHandler as ExceptionHandler130
@@ -45,7 +45,7 @@ class WSGIApp:
         if fonts:
             mapnik.register_fonts(fonts)
         if mapfile:
-            wms_factory = BaseWMSFactory(configpath)
+            wms_factory = MapWMSFactory(configpath)
             # TODO - add support for Cascadenik MML
             wms_factory.loadXML(mapfile)
             wms_factory.finalize()
@@ -121,7 +121,9 @@ class WSGIApp:
             ogcparams['HTTP_USER_AGENT'] = environ.get('HTTP_USER_AGENT', '')
 
             response = requesthandler(ogcparams)
-        except:
+        except Exception as e :
+            print "Exception in wsgi call..."
+            print e
             version = reqparams.get('version', None)
             if not version:
                 version = Version()

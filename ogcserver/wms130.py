@@ -7,11 +7,11 @@ ElementTree.register_namespace('', "http://www.opengis.net/wms")
 ElementTree.register_namespace('xlink', "http://www.w3.org/1999/xlink")
 
 from ogcserver.common import ParameterDefinition, Response, Version, ListFactory, \
-                   ColorFactory, CRSFactory, CRS, WMSBaseServiceHandler, \
+                   ColorFactory, CRSFactory, CRS, WMSXMLBaseServiceHandler, \
                    BaseExceptionHandler, Projection, to_unicode
 from ogcserver.exceptions import OGCException, ServerConfigurationError
 
-class ServiceHandler(WMSBaseServiceHandler):
+class ServiceHandler(WMSXMLBaseServiceHandler):
 
     SERVICE_PARAMS = {
         'GetCapabilities': {
@@ -256,7 +256,7 @@ class ServiceHandler(WMSBaseServiceHandler):
     def GetMap(self, params):
         if params['width'] > int(self.conf.get('service', 'maxwidth')) or params['height'] > int(self.conf.get('service', 'maxheight')):
             raise OGCException('Requested map size exceeds limits set by this server.')
-        return WMSBaseServiceHandler.GetMap(self, params)
+        return super(ServiceHandler, self).GetMap(params)
 
     def GetFeatureInfo(self, params):
         # support for QGIS 1.3.0 GetFeatInfo...
@@ -269,7 +269,7 @@ class ServiceHandler(WMSBaseServiceHandler):
         # but leaves version out of GetMap
         if not params.get('crs') and params.get('srs'):
             params['crs'] = params.get('srs')
-        return WMSBaseServiceHandler.GetFeatureInfo(self, params, 'query_map_point')
+        return super(ServiceHandler, self).GetFeatureInfo(params, 'query_map_point')
 
     def _buildMap(self, params):
         """ Override _buildMap method to handle reverse axis ordering in WMS 1.3.0.
@@ -281,7 +281,7 @@ class ServiceHandler(WMSBaseServiceHandler):
 
         """
         # Call superclass method
-        m = WMSBaseServiceHandler._buildMap(self, params)
+        m = super(ServiceHandler, self)._buildMap(params)
         # for range of epsg codes reverse axis as per 1.3.0 spec
         if params['crs'].code >= 4000 and params['crs'].code < 5000:
             bbox = params['bbox']
